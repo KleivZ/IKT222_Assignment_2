@@ -9,8 +9,7 @@
             <article class="card mb-4">
                 <div class="card-body">
                     <h2 class="card-title">Tittel på blogginnlegg</h2>
-                    <p class="card-text">Dette er et eksempel på et blogginnlegg. Her kan du skrive tekst, legge til bilder og annen relevant
-                        informasjon.</p>
+                    <p class="card-text">Dette er et eksempel på et blogginnlegg. Her kan du skrive tekst, legge til bilder og annen relevant informasjon.</p>
                     <a href="#" class="btn btn-primary">Les mer</a>
                 </div>
             </article>
@@ -18,10 +17,11 @@
 
         <section class="comments">
             <h2>Kommentarer</h2>
-            <div class="comment">
-                <p><strong>Navn:</strong> En kommentar</p>
-            </div>
-            <form class="comment-form">
+            {% for comment in comments %}
+                <div class="comment">
+                    <p>{{ comment | safe }}</p> </div>
+            {% endfor %}
+            <form class="comment-form" method="POST" action="/">
                 <label for="comment">Legg til en kommentar:</label>
                 <textarea id="comment" name="comment"></textarea>
                 <button type="submit">Send</button>
