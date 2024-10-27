@@ -2,12 +2,18 @@ import os
 from flask import Flask, render_template, request, g
 import sqlite3
 
-
 app = Flask(__name__)
 
-@app.route("/")
+# Liste for å lagre kommentarer
+# (I en ekte applikasjon vil du vanligvis lagre kommentarene i en database)
+comments = []  
+
+@app.route("/", methods=["GET", "POST"])
 def index():
-    return render_template("index.html")
+    if request.method == "POST":
+        comment = request.form["comment"]
+        comments.append(comment)
+    return render_template("index.html", comments=comments)
 
 @app.route("/om_meg")
 def om_meg():
@@ -46,10 +52,7 @@ def init_db():
             db.cursor().executescript(f.read())
         db.commit()
 
-if __name__ == '__main__':
-    init_db()
-    app.run(debug=True)
-
-
-
+# if __name__ == '__main__':
+#     init_db()
+#     app.run(debug=True)
 
