@@ -19,25 +19,31 @@
             <h2>Kommentarer</h2>
             {% for comment in comments %}
                 <div class="comment">
-                    <p>{{ comment | safe }}</p> </div>
+                    <p>{{ comment | safe }}</p>
+                </div>
             {% endfor %}
             <form class="comment-form" method="POST" action="/">
                 <label for="comment">Legg til en kommentar:</label>
                 <textarea id="comment" name="comment"></textarea>
-                <button type="submit">Send</button>
+                <button type="submit" class="btn btn-primary">Send</button>
             </form>
         </section>
     </div>
+
     <div class="col-md-4">
         <aside class="sidebar">
             <form class="search-form">
                 <input type="text" class="form-control" placeholder="Søk...">
                 <button type="submit" class="btn btn-outline-primary mt-2">Søk</button>
             </form>
+
             <h2 class="mt-4">Kategorier</h2>
             <ul class="list-group">
                 <li class="list-group-item"><a href="#">Kategori 1</a></li>
                 <li class="list-group-item"><a href="#">Kategori 2</a></li>
+                <li class="list-group-item">
+                    <a href="{{ url_for('login') }}" class="btn btn-primary btn-block">Logg Inn</a>
+                </li>
             </ul>
         </aside>
     </div>
