@@ -1,8 +1,10 @@
-import uuid
-
-from flask import Flask, render_template, request, g, redirect, session
 import os
 import sqlite3
+from flask import Flask, render_template, request, g, redirect, session, url_for
+from werkzeug.security import generate_password_hash, check_password_hash
+import pyotp
+import qrcode
+from io import BytesIO
 import bleach
 
 app = Flask(__name__)
@@ -20,7 +22,6 @@ TOKENS = {}      # Temporary storage for access tokens.
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = True
 
-
 # Content Security Policy function
 @app.after_request
 def apply_csp(response):
@@ -32,16 +33,14 @@ def apply_csp(response):
         "https://stackpath.bootstrapcdn.com; "
         "style-src 'self' "
         "https://stackpath.bootstrapcdn.com; "
-        "img-src 'self'; "
+        "img-src 'self' data:; "  # Allow data URLs for QR codes
         "font-src 'self'; "
         "connect-src 'self'; "
         "frame-ancestors 'self'"
     )
     return response
 
-
 DATABASE = 'database.db'
-
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -49,13 +48,11 @@ def get_db():
         db = g._database = sqlite3.connect(DATABASE)
     return db
 
-
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
-
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -80,11 +77,9 @@ def index():
 
     return render_template("index.html", comments=comments)
 
-
 @app.route("/om_meg")
 def om_meg():
     return render_template("om_meg.html")
-
 
 @app.route('/kontakt', methods=['GET', 'POST'])
 def kontakt():
@@ -93,7 +88,6 @@ def kontakt():
     else:
         return render_template('kontakt.html')
 
-
 def init_db():
     with app.app_context():
         db = get_db()
@@ -101,18 +95,25 @@ def init_db():
             db.cursor().executescript(f.read())
         db.commit()
 
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         # Process login form submission
         username = request.form["username"]
         password = request.form["password"]
-        # Add logic to validate the user credentials
-        session["username"] = username  # Mock login
-        render_template('index.html')
-    return render_template('login.html')
 
+        # Add logic to validate the user credentials
+        user = query_db('SELECT * FROM users WHERE username = ?', [username], one=True)
+
+        if user and check_password_hash(user['password'], password):
+            # Logg inn brukeren (for eksempel ved å sette en sesjonsvariabel)
+            session['user_id'] = user['id']
+            return redirect('/')  # Redirect til hjemmesiden etter vellykket innlogging
+        else:
+            # Ugyldig brukernavn eller passord
+            error = 'Ugyldig brukernavn eller passord'
+            return render_template('login.html', error=error)
+    return render_template('login.html')
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -120,95 +121,87 @@ def register():
         # Logic for registering a new user
         username = request.form["username"]
         password = request.form["password"]
-        # Save the new user in the database, hash the password, etc.
-        return render_template('login.html')
+        confirm_password = request.form["confirm_password"]
+
+        if password != confirm_password:
+            error = 'Passordene matcher ikke'
+            return render_template('register.html', error=error)
+
+        # Hash passordet
+        hashed_password = generate_password_hash(password)
+
+        try:
+            # Generer en TOTP-hemmelighet
+            totp_secret = pyotp.random_base32()
+
+            # Lag en URI for QR-koden
+            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name='Min Blogg')
+
+            # Generer QR-koden
+            img = qrcode.make(totp_uri)
+            buffered = BytesIO()
+            img.save(buffered, format="PNG")
+            totp_qr_code = "data:image/png;base64," + buffered.getvalue().encode('base64').decode('utf-8')
+
+            # Lagre brukeren i databasen
+            get_db().execute('INSERT INTO users (username, password, totp_secret) VALUES (?, ?, ?)',
+                             [username, hashed_password, totp_secret])
+            get_db().commit()
+
+            return render_template('register.html', totp_qr_code=totp_qr_code)
+        except Exception as e:
+            error = 'Noe gikk galt under registreringen'
+            print(f"Database error: {e}")
+            return render_template('register.html', error=error)
     return render_template('register.html')
 
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('index'))
 
-@app.route("/auth", methods=["GET"])
+# --- 2FA ruter ---
+@app.route('/verify_2fa/<username>', methods=['GET', 'POST'])
+def verify_2fa(username):
+    if request.method == 'POST':
+        code = request.form['2fa_code']
+        user = query_db('SELECT * FROM users WHERE username = ?', [username], one=True)
+        if user:
+            totp = pyotp.TOTP(user['totp_secret'])
+            if totp.verify(code):
+                session['user_id'] = user['id']
+                return redirect('/')
+            else:
+                error = 'Ugyldig 2FA-kode'
+                return render_template('2fa.html', username=username, error=error)
+    return render_template('2fa.html', username=username)
+
+# --- OAuth2 ruter ---
+@app.route('/auth')
 def auth():
-    """
-    Endpoint where the client sends the user to request their authorization.
-    After authorization, user is redirected back to the client with an auth code.
-    """
-    # 1. Extract 'client_id', 'redirect_uri', 'state', etc. from the request.
-    client_id = request.args.get("client_id")
-    redirect_uri = request.args.get("redirect_uri")
-    state = request.args.get("state")
+    return redirect(url_for('index'))
 
-    # 2. Validate 'client_id' and 'redirect_uri' against registered client details.
-    if client_id != CLIENT_ID or redirect_uri != REDIRECT_URI:
-        return "Invalid client_id or redirect_uri", 400
+@app.route('/callback')
+def callback():
+    return redirect(url_for('index'))
 
-    # 3. Display an authorization page to the user to grant permission.
-    # Typically, this would involve rendering a template asking for user consent.
-    # For simplicity, we'll assume consent is granted automatically here.
-    # In a real application, you would ask for user confirmation.
+# --- Hjelpefunksjoner ---
+def get_user():
+    user_id = session.get('user_id')
+    if user_id:
+        return query_db('SELECT * FROM users WHERE id = ?', [user_id], one=True)
+    return None
 
-    # 4. If user grants permission, generate an authorization code.
-    import uuid
-    auth_code = str(uuid.uuid4())
+@app.context_processor
+def inject_user():
+    return dict(user=get_user())
 
-    # 5. Save the authorization code and associated data.
-    AUTH_CODES[auth_code] = {"client_id": client_id, "redirect_uri": redirect_uri, "state": state}
-
-    # 6. Redirect the user back to 'redirect_uri' with the 'code' and 'state'.
-    return redirect(f"{redirect_uri}?code={auth_code}&state={state}")
-
-
-@app.route("/token", methods=["POST"])
-def token():
-    """
-    Endpoint where the client exchanges the authorization code for an access token.
-    """
-    # 1. Extract 'code', 'redirect_uri', 'client_id', 'client_secret' from the request.
-    code = request.form.get("code")
-    redirect_uri = request.form.get("redirect_uri")
-    client_id = request.form.get("client_id")
-    client_secret = request.form.get("client_secret")
-
-    # 2. Verify that the 'code' is valid and has not expired.
-    auth_data = AUTH_CODES.get(code)
-    if not auth_data or auth_data["redirect_uri"] != redirect_uri:
-        return {"error": "Invalid authorization code or redirect_uri"}, 400
-
-    # 3. Validate 'client_id' and 'client_secret'.
-    if client_id != CLIENT_ID or client_secret != CLIENT_SECRET:
-        return {"error": "Invalid client credentials"}, 400
-
-    # 4. Generate an access token (and optionally, a refresh token).
-    access_token = str(uuid.uuid4())
-
-    # 5. Save the access token for later validation.
-    TOKENS[access_token] = {"client_id": client_id, "user_data": "User specific data"}
-
-    # 6. Return the access token (and optionally, a refresh token) in a JSON response.
-    return {"access_token": access_token, "token_type": "Bearer"}, 200
-
-
-@app.route("/protected_resource", methods=["GET"])
-def protected_resource():
-    """
-    A protected endpoint the client can access using the access token.
-    """
-    # 1. Extract the access token from the request's Authorization header.
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return {"error": "Unauthorized"}, 401
-
-    access_token = auth_header.split(" ")[1]
-
-    # 2. Validate the access token.
-    token_data = TOKENS.get(access_token)
-    if not token_data:
-        return {"error": "Invalid or expired token"}, 401
-
-    # 3. If valid, proceed to access the protected resource and return the data.
-    # Here, we can return user-specific data or other sensitive information.
-    return {"data": "Protected resource data"}, 200
-
-
+def query_db(query, args=(), one=False):
+    cur = get_db().execute(query, args)
+    rv = cur.fetchall()
+    cur.close()
+    return (rv[0] if rv else None) if one else rv
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=False, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0')

@@ -1,37 +1,30 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <h2>Login</h2>
-        <form action="{{ url_for('login') }}" method="POST">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required placeholder="Enter your username">
-            </div>
+{% extends "base.html" %}
 
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required placeholder="Enter your password">
-            </div>
+{% block title %}Logg inn{% endblock %}
 
-            {% if require_2fa %}
-                <div class="form-group">
-                    <label for="2fa_code">Two-Factor Authentication Code</label>
-                    <input type="text" id="2fa_code" name="2fa_code" required placeholder="Enter your 2FA code">
-                    <small>Enter the code from your authenticator app</small>
-                </div>
-            {% endif %}
-
-            <button type="submit" class="btn">Login</button>
-        </form>
-
-        <p>Don't have an account? <a href="{{ url_for('register') }}">Register here</a>.</p>
-    </div>
-</body>
-</html>
+{% block content %}
+<div class="row">
+  <div class="col-md-8">
+    <section>
+      <h2>Logg inn</h2>
+      <form method="POST" action="/login">
+        <div class="form-group">
+          <label for="username">Brukernavn:</label>
+          <input type="text" class="form-control" id="username" name="username" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Passord:</label>
+          <input type="password" class="form-control" id="password" name="password" required>
+        </div>
+        {% if require_2fa %}
+        <div class="form-group">
+          <label for="2fa_code">2FA-kode:</label>
+          <input type="text" class="form-control" id="2fa_code" name="2fa_code" required>
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">Logg inn</button>
+      </form>
+      <p>Har du ikke en konto? <a href="/register">Registrer deg her</a>.</p>
+      <a href="{{ url_for('auth') }}">Logg inn med Google</a> </div>
+</div>
+{% endblock %}
