@@ -1,38 +1,35 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <h2>Register</h2>
-        <form action="{{ url_for('register') }}" method="POST">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required placeholder="Enter a username">
-            </div>
+{% extends "base.html" %}
 
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required placeholder="Enter a secure password">
-                <small>Password should be at least 8 characters long and include numbers and special characters.</small>
-            </div>
+{% block title %}Registrer{% endblock %}
 
-            <div class="form-group">
-                <label for="2fa">Two-Factor Authentication (Optional)</label>
-                <p>To enable 2FA, scan the QR code below with an authenticator app like Google Authenticator:</p>
-                {% if totp_qr_code %}
-                    <img src="{{ totp_qr_code }}" alt="QR Code for Two-Factor Authentication">
-                {% endif %}
-            </div>
-
-            <button type="submit" class="btn">Register</button>
-        </form>
-
-        <p>Already have an account? <a href="{{ url_for('login') }}">Login here</a>.</p>
-    </div>
-</body>
-</html>
+{% block content %}
+<div class="row">
+  <div class="col-md-8">
+    <section>
+      <h2>Registrer</h2>
+      <form method="POST" action="/register">
+        <div class="form-group">
+          <label for="username">Brukernavn:</label>
+          <input type="text" class="form-control" id="username" name="username" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Passord:</label>
+          <input type="password" class="form-control" id="password" name="password" required>
+        </div>
+        <div class="form-group">
+          <label for="confirm_password">Bekreft passord:</label>
+          <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Registrer</button>
+      </form>
+      <p>Har du allerede en konto? <a href="/login">Logg inn her</a>.</p>
+      {% if totp_qr_code %}
+      <div class="form-group">
+        <label for="2fa">2FA QR-kode:</label>
+        <img src="{{ totp_qr_code }}" alt="2FA QR-kode">
+      </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
