@@ -1,14 +1,24 @@
+import base64
 import os
 import sqlite3
 from flask import Flask, render_template, request, g, redirect, session, url_for
-from werkzeug.security import generate_password_hash, check_password_hash
+import bcrypt
 import pyotp
 import qrcode
 from io import BytesIO
 import bleach
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)  # For session handling
+
+# Initialize Flask-Limiter with default limit key (client's IP address)
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],  # Default rate limits for all routes
+    app=app
+)
 
 # Mock constants for client ID and secret.
 CLIENT_ID = "YOUR_CLIENT_ID"
@@ -46,7 +56,9 @@ def get_db():
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row  # Enable column access by name
     return db
+
 
 @app.teardown_appcontext
 def close_connection(exception):
@@ -95,30 +107,29 @@ def init_db():
             db.cursor().executescript(f.read())
         db.commit()
 
+# Apply rate limit to login route to prevent brute-force attacks
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("5 per minute")  # Allow a maximum of 5 login attempts per minute
 def login():
     if request.method == "POST":
-        # Process login form submission
         username = request.form["username"]
-        password = request.form["password"]
+        password = request.form["password"].encode('utf-8')
 
-        # Add logic to validate the user credentials
         user = query_db('SELECT * FROM users WHERE username = ?', [username], one=True)
 
-        if user and check_password_hash(user['password'], password):
-            # Logg inn brukeren (for eksempel ved å sette en sesjonsvariabel)
+        if user and bcrypt.checkpw(password, user['password']):
             session['user_id'] = user['id']
-            return redirect('/')  # Redirect til hjemmesiden etter vellykket innlogging
+            return redirect('/')
         else:
-            # Ugyldig brukernavn eller passord
             error = 'Ugyldig brukernavn eller passord'
             return render_template('login.html', error=error)
     return render_template('login.html')
 
+# Apply rate limit to registration route
 @app.route("/register", methods=["GET", "POST"])
+@limiter.limit("3 per minute")  # Limit registration attempts to 3 per minute
 def register():
     if request.method == "POST":
-        # Logic for registering a new user
         username = request.form["username"]
         password = request.form["password"]
         confirm_password = request.form["confirm_password"]
@@ -127,41 +138,55 @@ def register():
             error = 'Passordene matcher ikke'
             return render_template('register.html', error=error)
 
-        # Hash passordet
-        hashed_password = generate_password_hash(password)
+        # Sjekk om passordet oppfyller kravene
+        if not validate_password(password):
+            error = 'Passordet må være minst 8 tegn langt og inneholde minst ett tall og ett spesialtegn.'
+            return render_template('register.html', error=error)
+
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
         try:
-            # Generer en TOTP-hemmelighet
             totp_secret = pyotp.random_base32()
-
-            # Lag en URI for QR-koden
             totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name='Min Blogg')
 
-            # Generer QR-koden
             img = qrcode.make(totp_uri)
             buffered = BytesIO()
             img.save(buffered, format="PNG")
-            totp_qr_code = "data:image/png;base64," + buffered.getvalue().encode('base64').decode('utf-8')
 
-            # Lagre brukeren i databasen
+            totp_qr_code = "data:image/png;base64," + base64.b64encode(buffered.getvalue()).decode('utf-8')
+
             get_db().execute('INSERT INTO users (username, password, totp_secret) VALUES (?, ?, ?)',
                              [username, hashed_password, totp_secret])
             get_db().commit()
 
             return render_template('register.html', totp_qr_code=totp_qr_code)
+        except sqlite3.IntegrityError:
+            error = 'Brukernavnet er allerede i bruk.'
+            return render_template('register.html', error=error)
         except Exception as e:
             error = 'Noe gikk galt under registreringen'
             print(f"Database error: {e}")
             return render_template('register.html', error=error)
+
     return render_template('register.html')
+
+# Hjelpefunksjon for å validere passord
+def validate_password(password):
+    if len(password) < 8:
+        return False
+    if not any(char.isdigit() for char in password):
+        return False
+    if not any(not char.isalnum() for char in password):
+        return False
+    return True
 
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
     return redirect(url_for('index'))
 
-# --- 2FA ruter ---
 @app.route('/verify_2fa/<username>', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")  # Limit verification attempts to prevent brute-force on 2FA codes
 def verify_2fa(username):
     if request.method == 'POST':
         code = request.form['2fa_code']
@@ -176,7 +201,6 @@ def verify_2fa(username):
                 return render_template('2fa.html', username=username, error=error)
     return render_template('2fa.html', username=username)
 
-# --- OAuth2 ruter ---
 @app.route('/auth')
 def auth():
     return redirect(url_for('index'))
@@ -185,7 +209,7 @@ def auth():
 def callback():
     return redirect(url_for('index'))
 
-# --- Hjelpefunksjoner ---
+# Helper functions
 def get_user():
     user_id = session.get('user_id')
     if user_id:
