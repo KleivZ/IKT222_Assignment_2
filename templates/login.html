@@ -25,6 +25,8 @@
         <button type="submit" class="btn btn-primary">Logg inn</button>
       </form>
       <p>Har du ikke en konto? <a href="/register">Registrer deg her</a>.</p>
-      <a href="{{ url_for('auth') }}">Logg inn med Google</a> </div>
+      <a href="{{ url_for('google_auth') }}" class="btn btn-danger mt-3">Logg inn med Google</a>
+    </section>
+  </div>
 </div>
 {% endblock %}
