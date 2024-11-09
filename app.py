@@ -1,10 +1,10 @@
-# Imports
+# app.py
 import os
 import base64
 import sqlite3
 from io import BytesIO
-
-from flask import Flask, render_template, request, g, redirect, session, url_for
+from dotenv import load_dotenv # Use pip install python-dotenv
+from flask import Flask, render_template, request, g, redirect, session, url_for, flash
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from google_auth_oauthlib.flow import Flow
@@ -13,18 +13,21 @@ import pyotp
 import qrcode
 import bleach
 import requests
+import logging
+
+load_dotenv('my_little_secrets.env')  # Load environment variables from .env file
 
 # App Setup and Configuration
 app = Flask(__name__)
-app.secret_key = os.urandom(24)  # For session handling
+app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))  # For session handling, prefer environment variable
 
 # Client and OAuth Configuration
-CLIENT_ID = "1057743644961-ln1m6f365m8cbqpce3v08oomgepoc4la.apps.googleusercontent.com"
-CLIENT_SECRET = "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"
-REDIRECT_URI = "http://localhost:5000/google_callback"
-GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-GOOGLE_USER_INFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo"
+CLIENT_ID = os.environ.get("CLIENT_ID")
+CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
+REDIRECT_URI=os.environ.get("REDIRECT_URI")
+GOOGLE_AUTH_URL=os.getenv("GOOGLE_AUTH_URL")
+GOOGLE_TOKEN_URL=os.getenv("GOOGLE_TOKEN_URL")
+GOOGLE_USER_INFO_URL=os.getenv("GOOGLE_USER_INFO_URL")
 
 # Temporary storage for auth and tokens (Use a proper database in production)
 AUTH_CODES = {}
@@ -38,19 +41,34 @@ limiter = Limiter(
 )
 
 # Google OAuth2 Flow
-flow = Flow.from_client_secrets_file(
-    'client_secret.json',
-    scopes=['openid', 'https://www.googleapis.com/auth/userinfo.email',
-            'https://www.googleapis.com/auth/userinfo.profile'],
-    redirect_uri=REDIRECT_URI
+flow = Flow.from_client_config(
+    {
+        "web": {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "redirect_uris": [REDIRECT_URI],
+        }
+    },
+    scopes=[
+        'openid',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile'
+    ]
 )
 
 # Cookie settings for session security
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production
 
 # Database Configuration
 DATABASE = 'database.db'
+
+# Logging Configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Content Security Policy
 @app.after_request
@@ -71,7 +89,7 @@ def get_db():
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row  # Enable column access by name
+        db.row_factory = sqlite3.Row
     return db
 
 @app.teardown_appcontext
@@ -138,18 +156,17 @@ def register():
             error = 'Brukernavnet er allerede i bruk.'
             return render_template('register.html', error=error)
         except Exception as e:
+            logger.error(f"Database error during registration: {e}")
             error = 'Noe gikk galt under registreringen'
-            print(f"Database error: {e}")
             return render_template('register.html', error=error)
     return render_template('register.html')
 
 @app.route('/logout')
 def logout():
-    session.pop('user_id', None)         # For vanlige brukere
-    session.pop('user_email', None)      # For Google OAuth2.0-brukere
+    session.pop('user_id', None)
+    session.pop('user_email', None)
     session.clear()
     return redirect(url_for('index'))
-
 
 @app.route('/verify_2fa/<username>', methods=['GET', 'POST'])
 @limiter.limit("3 per minute")
@@ -167,10 +184,6 @@ def verify_2fa(username):
                 return render_template('two_factor_auth.html', username=username, error=error)
     return render_template('two_factor_auth.html', username=username)
 
-@app.route('/auth')
-def auth():
-    return redirect(url_for('index'))
-
 @app.route("/google_auth")
 def google_auth():
     google_auth_url = (
@@ -185,96 +198,68 @@ def google_auth():
 
 @app.route("/google_callback")
 def google_callback():
-    code = request.args.get("code")
-    if not code:
-        return "Authorization failed.", 400
+    try:
+        code = request.args.get("code")
+        if not code:
+            flash("Authorization failed. Missing code parameter.", "error")
+            return redirect(url_for("login"))
 
-    # Exchange authorization code for access token
-    token_data = {
-        "code": code,
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "redirect_uri": REDIRECT_URI,
-        "grant_type": "authorization_code",
-    }
-    token_response = requests.post(GOOGLE_TOKEN_URL, data=token_data)
-    token_json = token_response.json()
-    access_token = token_json.get("access_token")
-    if not access_token:
-        return "Failed to retrieve access token.", 400
+        token_data = {
+            "code": code,
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "redirect_uri": REDIRECT_URI,
+            "grant_type": "authorization_code",
+        }
+        token_response = requests.post(GOOGLE_TOKEN_URL, data=token_data)
+        token_response.raise_for_status()
 
-    user_info_response = requests.get(
-        "https://www.googleapis.com/oauth2/v2/userinfo",
-        headers={"Authorization": f"Bearer {access_token}"}
-    )
-    user_info = user_info_response.json()
-    user_email = user_info.get("email")
-    if not user_email:
-        return "Failed to retrieve email.", 400
+        token_json = token_response.json()
+        access_token = token_json.get("access_token")
+        if not access_token:
+            flash("Failed to retrieve access token.", "error")
+            return redirect(url_for("login"))
 
-    user = find_user_by_email(user_email)
-    if not user:
-        add_google_user(user_email)
+        user_info_response = requests.get(
+            GOOGLE_USER_INFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        user_info_response.raise_for_status()
 
-    session["user_email"] = user_email
-    return redirect(url_for("index"))
+        user_info = user_info_response.json()
+        user_email = user_info.get("email")
+        if not user_email:
+            flash("Failed to retrieve email.", "error")
+            return redirect(url_for("login"))
 
-# Index Route and Other Pages
-@app.route("/", methods=["GET", "POST"])
-def index():
-    db = get_db()
-    cursor = db.cursor()
+        user = find_user_by_email(user_email)
+        if not user:
+            add_google_user(user_email)
 
-    if request.method == "POST":
-        comment = request.form["comment"]
-        sanitized_comment = bleach.linkify(bleach.clean(comment))
-        cursor.execute("INSERT INTO comments (content) VALUES (?)", (sanitized_comment,))
-        db.commit()
+        session["user_email"] = user_email
+        return redirect(url_for("index"))
+    except requests.RequestException as e:
+        logger.error(f"OAuth error: {e}")
+        flash("An error occurred during Google authentication.", "error")
+        return redirect(url_for("login"))
 
-    cursor.execute("SELECT content FROM comments ORDER BY created_at DESC")
-    comments = [row[0] for row in cursor.fetchall()]
-    return render_template("index.html", comments=comments)
-
-@app.route("/om_meg")
-def om_meg():
-    return render_template("om_meg.html")
-
-@app.route('/kontakt', methods=['GET', 'POST'])
-def kontakt():
-    if request.method == 'POST':
-        return "Thank you for your message!"
-    else:
-        return render_template('kontakt.html')
-
-# Error Handling
-@app.errorhandler(429)
-def ratelimit_handler(exception):
-    error_message = "For mange innloggingsforsøk. Vennligst prøv igjen om et minutt."
-    return render_template("login.html", error=error_message), 429
-
-# Helper and Utility Functions
+# Helper Functions and Main Execution
 def query_db(query, args=(), one=False):
     cur = get_db().execute(query, args)
     rv = cur.fetchall()
     cur.close()
     return (rv[0] if rv else None) if one else rv
 
-
 def get_user():
-    # Sjekk om brukeren er logget inn med vanlig pålogging
     user_id = session.get('user_id')
     if user_id:
         user = query_db('SELECT * FROM users WHERE id = ?', [user_id], one=True)
         if user:
-            return user['username']  # Returner brukernavn for vanlig pålogging
-
-    # Sjekk om brukeren er logget inn med Google OAuth2.0
+            return user['username']
     user_email = session.get('user_email')
     if user_email:
-        return user_email  # Returner e-post for Google OAuth2.0-brukere
-
+        return user_email
     return None
-
 
 @app.context_processor
 def inject_user():
@@ -300,7 +285,34 @@ def validate_password(password):
         return False
     return True
 
-# Main Execution
+@app.route("/", methods=["GET", "POST"])
+def index():
+    db = get_db()
+    cursor = db.cursor()
+    if request.method == "POST":
+        comment = request.form["comment"]
+        sanitized_comment = bleach.linkify(bleach.clean(comment))
+        cursor.execute("INSERT INTO comments (content) VALUES (?)", (sanitized_comment,))
+        db.commit()
+    cursor.execute("SELECT content FROM comments ORDER BY created_at DESC")
+    comments = [row[0] for row in cursor.fetchall()]
+    return render_template("index.html", comments=comments)
+
+@app.route("/om_meg")
+def om_meg():
+    return render_template("om_meg.html")
+
+@app.route('/kontakt', methods=['GET', 'POST'])
+def kontakt():
+    if request.method == 'POST':
+        return "Thank you for your message!"
+    return render_template('kontakt.html')
+
+@app.errorhandler(429)
+def ratelimit_handler(exception):
+    error_message = "For mange innloggingsforsøk. Vennligst prøv igjen om et minutt."
+    return render_template("login.html", error=error_message), 429
+
 if __name__ == "__main__":
     init_db()
     app.run(debug=True, host='0.0.0.0')

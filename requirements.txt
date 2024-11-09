@@ -37,3 +37,4 @@ pycparser~=2.22
 wrapt~=1.16.0
 ordered-set~=4.1.0
 google-auth-oauthlib~=1.2.1
+python-dotenv~=1.0.1
