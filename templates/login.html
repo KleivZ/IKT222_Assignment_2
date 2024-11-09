@@ -7,35 +7,29 @@
   <div class="col-md-8">
     <section>
       <h2>Logg inn</h2>
-
-      <!-- Feilmelding vises her hvis `error` er satt -->
-      {% if error %}
-      <div class="alert alert-danger">
-          {{ error }}
-      </div>
-      {% endif %}
-
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
       <form method="POST" action="/login">
         <div class="form-group">
-          <label for="username">Brukernavn:</label>
+          <label for="username">Brukernavn (epost-adresse):</label>
           <input type="text" class="form-control" id="username" name="username" required>
         </div>
         <div class="form-group">
           <label for="password">Passord:</label>
           <input type="password" class="form-control" id="password" name="password" required>
         </div>
-
-        {% if require_2fa %}
-        <div class="form-group">
-          <label for="2fa_code">2FA-kode:</label>
-          <input type="text" class="form-control" id="2fa_code" name="2fa_code" required>
-        </div>
-        {% endif %}
-
         <button type="submit" class="btn btn-primary">Logg inn</button>
       </form>
+      <br>
       <p>Har du ikke en konto? <a href="/register">Registrer deg her</a>.</p>
-      <a href="{{ url_for('google_auth') }}">Logg inn med Google</a>
+      <a href="{{ url_for('google_auth') }}" class="btn btn-secondary">Logg inn med Google</a>
     </section>
   </div>
 </div>

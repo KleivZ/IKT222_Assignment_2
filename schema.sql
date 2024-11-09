@@ -4,12 +4,13 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     password BLOB NOT NULL,                -- Stores hashed passwords
     totp_secret TEXT,                      -- Stores TOTP secret for 2FA
-    oauth_provider TEXT,                   -- Stores OAuth provider name if applicable
+    remember_token TEXT,                   -- Remembers token for 2FA
+    oauth_provider TEXT,                   -- Stores OAuth provider name
     oauth_user_id TEXT,                    -- Stores user ID from OAuth provider
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Comments table to store user comments with sanitization (optional, as shown in your index route)
+-- Comments table to store user comments with sanitization
 CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -29,7 +30,7 @@ CREATE TABLE IF NOT EXISTS tokens (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- Encrypted data table for other sensitive information
+-- Encrypted data table for sensitive information
 CREATE TABLE IF NOT EXISTS encrypted_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS encrypted_data (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+-- Table to store blog posts
 CREATE TABLE IF NOT EXISTS blog_posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,

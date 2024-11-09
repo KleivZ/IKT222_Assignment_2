@@ -1,33 +1,44 @@
 {% extends "base.html" %}
 
-{% block title %}Registrer{% endblock %}
+{% block title %}Register{% endblock %}
 
 {% block content %}
 <div class="row">
   <div class="col-md-8">
     <section>
       <h2>Registrer</h2>
-      <form method="POST" action="/register">
-        <div class="form-group">
-          <label for="username">Brukernavn:</label>
-          <input type="text" class="form-control" id="username" name="username" required>
+      {% if error %}
+      <div class="alert alert-danger">{{ error }}</div>
+      {% endif %}
+      {% if show_totp_input %}
+        <div class="text-center">
+          <p>Skann denne QR-koden med din autentiseringsapplikasjon for å sette opp tofaktor-autentisering:</p>
+          <img src="{{ totp_qr_code }}" alt="TOTP QR Code">
         </div>
-        <div class="form-group">
-          <label for="password">Passord:</label>
-          <input type="password" class="form-control" id="password" name="password" required>
-        </div>
-        <div class="form-group">
-          <label for="confirm_password">Bekreft passord:</label>
-          <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-        </div>
-        <button type="submit" class="btn btn-primary">Registrer</button>
-      </form>
-      <p>Har du allerede en konto? <a href="/login">Logg inn her</a>.</p>
-      {% if totp_qr_code %}
-      <div class="form-group">
-        <label for="2fa">2FA QR-kode:</label>
-        <img src="{{ totp_qr_code }}" alt="2FA QR-kode">
-      </div>
+        <form method="POST">
+          <input type="hidden" name="username" value="{{ username }}">
+          <div class="form-group mt-3">
+            <label for="totp_code">Skriv inn 6-sifret tallkode fra din autentiseringsapp:</label>
+            <input type="text" class="form-control" id="totp_code" name="totp_code" placeholder="Enter your 2FA code" required>
+          </div>
+          <button type="submit" class="btn btn-primary mt-3">Fullfør registrering</button>
+        </form>
+      {% else %}
+        <form method="POST">
+          <div class="form-group">
+            <label for="username">Brukernavn:</label>
+            <input type="text" class="form-control" id="username" name="username" required>
+          </div>
+          <div class="form-group">
+            <label for="password">Passord (minst 8 tegn, må inneholde bokstaver, tall og spesialtegn):</label>
+            <input type="password" class="form-control" id="password" name="password" required>
+          </div>
+          <div class="form-group">
+            <label for="confirm_password">Bekreft passord:</label>
+            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Registrer</button>
+        </form>
       {% endif %}
     </section>
   </div>
