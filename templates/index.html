@@ -6,37 +6,43 @@
 <div class="row">
     <div class="col-md-8">
         <section class="blog-posts">
-            {% for post in blog_posts %}
+            <h2>Velkommen til hjemmesiden!</h2>
+
             <article class="card mb-4">
                 <div class="card-body">
-                    <h2 class="card-title">{{ post[1] }}</h2>
-                    <p class="card-text">{{ post[2] }}</p>
+                    <h2 class="card-title">Tittel på blogginnlegg</h2>
+                    <p class="card-text">Dette er et eksempel på et blogginnlegg. Her kan en skrive tekst, legge til bilder og annen relevant informasjon.</p>
                     <a href="#" class="btn btn-primary">Les mer</a>
                 </div>
             </article>
-            {% endfor %}
         </section>
 
         <section class="comments">
             <h2>Kommentarer</h2>
             {% for comment in comments %}
-            <div class="comment">
-                <p>{{ comment | safe }}</p>
-            </div>
+                <div class="comment mb-3">
+                    <p>
+                        <strong>{{ comment['username'] }}:</strong> {{ comment['content'] | safe }}
+                    </p>
+                </div>
+            {% else %}
+                <p>Ingen kommentarer enda.</p>
             {% endfor %}
-            <form class="comment-form" method="POST" action="/">
+            <form class="comment-form mt-4" method="POST" action="/">
                 <label for="comment">Legg til en kommentar:</label>
-                <textarea id="comment" name="comment"></textarea>
-                <button type="submit">Send</button>
+                <textarea id="comment" name="comment" class="form-control" rows="3" required></textarea>
+                <button type="submit" class="btn btn-primary mt-2">Send</button>
             </form>
         </section>
     </div>
+
     <div class="col-md-4">
         <aside class="sidebar">
             <form class="search-form">
                 <input type="text" class="form-control" placeholder="Søk...">
                 <button type="submit" class="btn btn-outline-primary mt-2">Søk</button>
             </form>
+
             <h2 class="mt-4">Kategorier</h2>
             <ul class="list-group">
                 <li class="list-group-item"><a href="#">Kategori 1</a></li>

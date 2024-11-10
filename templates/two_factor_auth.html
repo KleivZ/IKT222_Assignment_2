@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Two-Factor Authentication{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-md-8">
+    <section>
+      <h2>Two-Factor Authentication</h2>
+      {% if totp_qr_code %}
+      <div class="text-center">
+        <p>Scan this QR code with your authenticator app to set up two-factor authentication:</p>
+        <img src="{{ totp_qr_code }}" alt="TOTP QR Code">
+      </div>
+      {% endif %}
+      {% if error %}
+      <div class="alert alert-danger">
+        {{ error }}
+      </div>
+      {% endif %}
+      <form method="POST" action="/two_factor_auth">
+        <div class="form-group">
+          <label for="2fa_code">2FA Code:</label>
+          <input type="text" class="form-control" id="2fa_code" name="2fa_code" placeholder="Enter your 2FA code" required>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="remember_me" name="remember_me">
+          <label class="form-check-label" for="remember_me">Remember this device</label>
+        </div>
+        <button type="submit" class="btn btn-primary mt-3">Verify</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}
